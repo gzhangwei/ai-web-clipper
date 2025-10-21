@@ -1,3 +1,12 @@
+## 1.42.0
+
+`2025-10-21`
+
+- Fix Notion formatting issues
+- Fix workspace name display errors
+- Improve Notion account verification
+- Fix wolai upload problems
+
 ## 1.41.0
 
 `2025-06-02`
