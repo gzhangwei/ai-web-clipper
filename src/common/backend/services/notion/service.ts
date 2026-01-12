@@ -6,7 +6,16 @@ import axios, { AxiosInstance } from 'axios';
 import Container from 'typedi';
 import { CreateDocumentRequest, DocumentService } from '../../index';
 import { CompleteStatus, UnauthorizedError } from './../interface';
-import { NotionRepository, NotionUserContent, RecentPages } from './types';
+import {
+  NotionRepository,
+  NotionUserContent,
+  RecentPages,
+  CreateHierarchyRequest,
+  PageCreateResult,
+  CreateHierarchyProgress,
+  CreateHierarchyOptions,
+} from './types';
+import { NotionHierarchyService } from './hierarchy';
 
 const PAGE = 'page';
 const COLLECTION_VIEW_PAGE = 'collection_view_page';
@@ -444,4 +453,47 @@ export default class NotionDocumentService implements DocumentService {
       post,
     };
   }
+
+  // ===== 层级目录创建方法 =====
+
+  /**
+   * 创建层级目录结构
+   * @param request 层级创建请求
+   * @param onProgress 进度回调
+   */
+  createHierarchy = async (
+    request: Omit<CreateHierarchyRequest, 'spaceId'> & { spaceId?: string },
+    options?: CreateHierarchyOptions,
+    onProgress?: (progress: CreateHierarchyProgress) => void
+  ): Promise<PageCreateResult> => {
+    // 获取 spaceId
+    let spaceId = request.spaceId;
+    if (!spaceId) {
+      spaceId = await this.getSpaceId();
+    }
+
+    // 创建带 cookie 的请求函数
+    const requestFn = async <T>(url: string, data?: any): Promise<T> => {
+      const response = await this.requestWithCookie.post<T>(url, data);
+      return response.data;
+    };
+
+    // 创建层级服务
+    const hierarchyService = new NotionHierarchyService(requestFn, options, onProgress);
+
+    // 执行创建
+    return hierarchyService.createHierarchy({
+      parentId: request.parentId,
+      spaceId,
+      hierarchy: request.hierarchy,
+      options,
+    });
+  };
+
+  /**
+   * 获取可用的父页面列表 (用于选择层级目录的根位置)
+   */
+  getAvailableParentPages = async (): Promise<NotionRepository[]> => {
+    return this.getRepositories();
+  };
 }
