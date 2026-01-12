@@ -1,22 +1,42 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { Form, Input, Select, Button, Switch, message, Card, InputNumber, Space } from 'antd';
+import { Form, Input, Select, Button, Switch, message, Card, InputNumber, Space, AutoComplete } from 'antd';
 import { FormattedMessage, useIntl } from 'react-intl';
 import {
   AIServiceConfig,
   DEFAULT_SERVICE_CONFIG,
   DEFAULT_PROCESS_OPTIONS,
-  AIProcessOptions,
 } from '@/service/ai/types';
 import { loadAIConfig, saveAIConfig } from '@/service/ai/storage';
 import styles from '../index.less';
 
 const { Option } = Select;
 
+// 常用模型列表（用户可以输入任意模型名）
+const MODEL_OPTIONS = [
+  { value: 'gpt-4o', label: 'GPT-4o (128K)' },
+  { value: 'gpt-4o-mini', label: 'GPT-4o Mini (128K)' },
+  { value: 'gpt-4-turbo', label: 'GPT-4 Turbo (128K)' },
+  { value: 'gpt-4', label: 'GPT-4 (8K)' },
+  { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo (16K)' },
+  { value: 'claude-3-opus-20240229', label: 'Claude 3 Opus' },
+  { value: 'claude-3-sonnet-20240229', label: 'Claude 3 Sonnet' },
+  { value: 'claude-3-haiku-20240307', label: 'Claude 3 Haiku' },
+  { value: 'deepseek-chat', label: 'DeepSeek Chat' },
+  { value: 'deepseek-coder', label: 'DeepSeek Coder' },
+  { value: 'qwen-turbo', label: 'Qwen Turbo' },
+  { value: 'qwen-plus', label: 'Qwen Plus' },
+  { value: 'glm-4', label: 'GLM-4' },
+  { value: 'moonshot-v1-8k', label: 'Moonshot v1 8K' },
+  { value: 'moonshot-v1-32k', label: 'Moonshot v1 32K' },
+  { value: 'moonshot-v1-128k', label: 'Moonshot v1 128K' },
+];
+
 const AISettings: React.FC = () => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [testLoading, setTestLoading] = useState(false);
+  const [modelOptions, setModelOptions] = useState(MODEL_OPTIONS);
   const intl = useIntl();
 
   useEffect(() => {
@@ -69,7 +89,7 @@ const AISettings: React.FC = () => {
     setTestLoading(true);
     try {
       const endpoint = form.getFieldValue('endpoint') || 'https://api.openai.com/v1/chat/completions';
-      const model = form.getFieldValue('model') || 'gpt-3.5-turbo';
+      const model = form.getFieldValue('model') || 'gpt-4o-mini';
 
       const response = await fetch(endpoint, {
         method: 'POST',
@@ -102,6 +122,24 @@ const AISettings: React.FC = () => {
     }
   };
 
+  // 模型搜索过滤
+  const handleModelSearch = (searchText: string) => {
+    if (!searchText) {
+      setModelOptions(MODEL_OPTIONS);
+      return;
+    }
+    const filtered = MODEL_OPTIONS.filter(
+      opt => opt.value.toLowerCase().includes(searchText.toLowerCase()) ||
+             opt.label.toLowerCase().includes(searchText.toLowerCase())
+    );
+    // 如果没有匹配的，允许用户使用自定义值
+    if (filtered.length === 0) {
+      setModelOptions([{ value: searchText, label: searchText }]);
+    } else {
+      setModelOptions(filtered);
+    }
+  };
+
   return (
     <div className={styles.preferenceContainer}>
       <Card
@@ -122,7 +160,12 @@ const AISettings: React.FC = () => {
             <Select>
               <Option value="openai">OpenAI</Option>
               <Option value="azure">Azure OpenAI</Option>
-              <Option value="custom">Custom Endpoint</Option>
+              <Option value="anthropic">Anthropic (Claude)</Option>
+              <Option value="deepseek">DeepSeek</Option>
+              <Option value="moonshot">Moonshot (Kimi)</Option>
+              <Option value="qwen">Qwen (Alibaba)</Option>
+              <Option value="zhipu">Zhipu (GLM)</Option>
+              <Option value="custom">Custom / Other</Option>
             </Select>
           </Form.Item>
 
@@ -136,7 +179,7 @@ const AISettings: React.FC = () => {
               />
             }
           >
-            <Input.Password placeholder="sk-..." />
+            <Input.Password placeholder="sk-... / api-key-..." />
           </Form.Item>
 
           <Form.Item
@@ -145,7 +188,7 @@ const AISettings: React.FC = () => {
             extra={
               <FormattedMessage
                 id="preference.ai.endpoint.hint"
-                defaultMessage="Leave empty for default OpenAI endpoint"
+                defaultMessage="Leave empty for default OpenAI endpoint. For other providers, enter their API endpoint."
               />
             }
           >
@@ -155,21 +198,32 @@ const AISettings: React.FC = () => {
           <Form.Item
             name="model"
             label={<FormattedMessage id="preference.ai.model" defaultMessage="Model" />}
+            extra={
+              <FormattedMessage
+                id="preference.ai.model.hint"
+                defaultMessage="Select from list or type any custom model name"
+              />
+            }
           >
-            <Select>
-              <Option value="gpt-3.5-turbo">GPT-3.5 Turbo</Option>
-              <Option value="gpt-4">GPT-4</Option>
-              <Option value="gpt-4-turbo">GPT-4 Turbo</Option>
-              <Option value="gpt-4o">GPT-4o</Option>
-              <Option value="gpt-4o-mini">GPT-4o Mini</Option>
-            </Select>
+            <AutoComplete
+              options={modelOptions}
+              onSearch={handleModelSearch}
+              placeholder="gpt-4o-mini"
+              allowClear
+            />
           </Form.Item>
 
           <Form.Item
             name="maxTokens"
-            label={<FormattedMessage id="preference.ai.maxTokens" defaultMessage="Max Tokens" />}
+            label={<FormattedMessage id="preference.ai.maxTokens" defaultMessage="Max Output Tokens" />}
+            extra={
+              <FormattedMessage
+                id="preference.ai.maxTokens.hint"
+                defaultMessage="Maximum tokens for AI response. Depends on your model's limit (e.g., GPT-4o: 16K output, Claude: 4K output)"
+              />
+            }
           >
-            <InputNumber min={100} max={8000} style={{ width: '100%' }} />
+            <InputNumber min={100} max={128000} step={1000} style={{ width: '100%' }} />
           </Form.Item>
 
           <Form.Item
@@ -178,7 +232,7 @@ const AISettings: React.FC = () => {
             extra={
               <FormattedMessage
                 id="preference.ai.temperature.hint"
-                defaultMessage="Lower values = more focused, higher = more creative"
+                defaultMessage="Lower values = more focused, higher = more creative (0-2)"
               />
             }
           >

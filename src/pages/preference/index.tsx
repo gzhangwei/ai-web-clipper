@@ -94,15 +94,7 @@ const Preference: React.FC<PageProps> = ({
   accounts,
 }) => {
   const goHome = () => {
-    if (accounts.length === 0) {
-      message.error(
-        locale.format({
-          id: 'preference.bind.message',
-          defaultMessage: 'You need to bind an account before you can use it.',
-        })
-      );
-      return;
-    }
+    // 移除强制绑定账户的限制
     push('/');
   };
 

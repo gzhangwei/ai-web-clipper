@@ -98,12 +98,13 @@ const Page = React.memo<PageProps>(
     const currentService = currentAccount ? servicesMeta[currentAccount.type] : null;
 
     useEffect(() => {
-      if (pathname === '/') {
-        if (accounts.length === 0) {
-          dispatch(routerRedux.push('/preference/account'));
-          return;
-        }
-      }
+      // 移除强制绑定账户的限制，允许用户先浏览设置
+      // if (pathname === '/') {
+      //   if (accounts.length === 0) {
+      //     dispatch(routerRedux.push('/preference/account'));
+      //     return;
+      //   }
+      // }
     }, [accounts.length, dispatch, pathname]);
 
     const onRepositorySelect = useCallback(

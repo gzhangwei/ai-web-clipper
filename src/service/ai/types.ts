@@ -63,7 +63,7 @@ export interface AIProcessResult {
 // AI 服务配置
 export interface AIServiceConfig {
   // API 提供商
-  provider: 'openai' | 'azure' | 'custom';
+  provider: 'openai' | 'azure' | 'anthropic' | 'deepseek' | 'moonshot' | 'qwen' | 'zhipu' | 'custom';
   // API Key (建议通过后端代理)
   apiKey?: string;
   // API 端点 (自定义或 Azure)
@@ -102,7 +102,7 @@ export const DEFAULT_PROCESS_OPTIONS: AIProcessOptions = {
 // 默认服务配置
 export const DEFAULT_SERVICE_CONFIG: AIServiceConfig = {
   provider: 'openai',
-  model: 'gpt-3.5-turbo',
-  maxTokens: 2000,
+  model: 'gpt-4o-mini',
+  maxTokens: 4096,
   temperature: 0.3,
 };
