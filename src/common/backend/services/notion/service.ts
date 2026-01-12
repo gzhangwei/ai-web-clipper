@@ -61,8 +61,14 @@ export default class NotionDocumentService implements DocumentService {
     );
   }
 
-  getId = () => {
-    return 'notion';
+  getId = async () => {
+    // 获取用户信息以生成唯一 ID
+    if (!this.userContent) {
+      this.userContent = await this.getUserContent();
+    }
+    const userId = Object.keys(this.userContent.recordMap.notion_user)[0];
+    // 使用 notion_ 前缀 + 用户 ID 作为唯一标识
+    return `notion_${userId}`;
   };
 
   getUserInfo = async () => {

@@ -34,7 +34,14 @@ export default new ToolExtension<AIOrganizeResult>(
     },
     afterRun: async context => {
       const { result, message } = context;
-      const originalContent = result.originalContent;
+
+      // 检查 result 是否存在
+      if (!result) {
+        console.warn('AI Organize: No result available');
+        return context.data || '';
+      }
+
+      const originalContent = result.originalContent || context.data || '';
 
       if (result.error) {
         message.info(`AI processing error: ${result.error}`);

@@ -70,7 +70,7 @@ export interface ServiceMeta {
 export interface UpdateTOCRequest {}
 
 export interface DocumentService<T = any> {
-  getId(): string;
+  getId(): string | Promise<string>;
 
   getRepositories(): Promise<Repository[]>;
 
