@@ -2,14 +2,14 @@
  * AI 服务配置存储
  */
 
-import { localStorageService } from '@/common/chrome/storage';
+import { syncStorageService } from '@/common/chrome/storage';
 import { AIServiceConfig, DEFAULT_SERVICE_CONFIG } from './types';
 
 const AI_CONFIG_KEY = 'ai_service_config';
 
 export async function loadAIConfig(): Promise<AIServiceConfig> {
   try {
-    const stored = await localStorageService.get<AIServiceConfig>(AI_CONFIG_KEY);
+    const stored = await syncStorageService.get<AIServiceConfig>(AI_CONFIG_KEY);
     if (stored) {
       return { ...DEFAULT_SERVICE_CONFIG, ...stored };
     }
@@ -23,7 +23,8 @@ export async function saveAIConfig(config: Partial<AIServiceConfig>): Promise<vo
   try {
     const current = await loadAIConfig();
     const updated = { ...current, ...config };
-    await localStorageService.set(AI_CONFIG_KEY, updated);
+    await syncStorageService.set(AI_CONFIG_KEY, updated);
+    console.log('AI config saved:', updated);
   } catch (e) {
     console.error('Failed to save AI config:', e);
     throw e;
@@ -32,7 +33,7 @@ export async function saveAIConfig(config: Partial<AIServiceConfig>): Promise<vo
 
 export async function clearAIConfig(): Promise<void> {
   try {
-    await localStorageService.delete(AI_CONFIG_KEY);
+    await syncStorageService.delete(AI_CONFIG_KEY);
   } catch (e) {
     console.error('Failed to clear AI config:', e);
   }

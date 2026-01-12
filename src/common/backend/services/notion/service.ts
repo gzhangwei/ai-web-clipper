@@ -63,12 +63,21 @@ export default class NotionDocumentService implements DocumentService {
 
   getId = async () => {
     // 获取用户信息以生成唯一 ID
-    if (!this.userContent) {
-      this.userContent = await this.getUserContent();
+    try {
+      if (!this.userContent) {
+        this.userContent = await this.getUserContent();
+      }
+      const userKeys = Object.keys(this.userContent?.recordMap?.notion_user || {});
+      if (userKeys.length === 0) {
+        return 'notion_unknown';
+      }
+      const userId = userKeys[0];
+      // 使用 notion_ 前缀 + 用户 ID 作为唯一标识
+      return `notion_${userId}`;
+    } catch (error) {
+      console.error('Failed to get Notion user ID:', error);
+      return 'notion_unknown';
     }
-    const userId = Object.keys(this.userContent.recordMap.notion_user)[0];
-    // 使用 notion_ 前缀 + 用户 ID 作为唯一标识
-    return `notion_${userId}`;
   };
 
   getUserInfo = async () => {
@@ -127,7 +136,44 @@ export default class NotionDocumentService implements DocumentService {
         };
       };
     }>('/api/v3/getSpacesInitial');
-    return response.data.users[userId].user_root[userId].value.space_view_pointers;
+
+    // 检查返回数据结构
+    const userData = response.data.users?.[userId];
+    if (!userData) {
+      // 可能用户 ID 不匹配当前 cookies，尝试获取第一个可用用户
+      const firstUserId = Object.keys(response.data.users || {})[0];
+      if (firstUserId && response.data.users[firstUserId]?.user_root) {
+        const userRoot = response.data.users[firstUserId].user_root;
+        const rootKey = Object.keys(userRoot)[0];
+        if (rootKey && userRoot[rootKey]?.value?.space_view_pointers) {
+          return userRoot[rootKey].value.space_view_pointers;
+        }
+      }
+      throw new UnauthorizedError(
+        localeService.format({
+          id: 'backend.services.notion.unauthorizedErrorMessage',
+          defaultMessage: 'Notion 账户验证失败，请在浏览器中重新登录 Notion 后再试。',
+        })
+      );
+    }
+
+    // 标准路径
+    if (userData.user_root?.[userId]?.value?.space_view_pointers) {
+      return userData.user_root[userId].value.space_view_pointers;
+    }
+
+    // 尝试获取第一个可用的 user_root
+    const userRootKey = Object.keys(userData.user_root || {})[0];
+    if (userRootKey && userData.user_root[userRootKey]?.value?.space_view_pointers) {
+      return userData.user_root[userRootKey].value.space_view_pointers;
+    }
+
+    throw new UnauthorizedError(
+      localeService.format({
+        id: 'backend.services.notion.unauthorizedErrorMessage',
+        defaultMessage: 'Notion 账户验证失败，请在浏览器中重新登录 Notion 后再试。',
+      })
+    );
   };
 
   getSpaceName = async (spaceId: string) => {
@@ -473,7 +519,7 @@ export default class NotionDocumentService implements DocumentService {
     onProgress?: (progress: CreateHierarchyProgress) => void
   ): Promise<PageCreateResult> => {
     // 获取 spaceId
-    let spaceId = request.spaceId;
+    let spaceId: string = request.spaceId || '';
     if (!spaceId) {
       spaceId = await this.getSpaceId();
     }
