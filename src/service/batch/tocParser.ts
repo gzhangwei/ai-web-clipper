@@ -192,13 +192,25 @@ export class TOCParser {
       if (!href) continue;
 
       // 跳过锚点链接、外部链接、javascript 链接
-      if (href.startsWith('#') || href.startsWith('javascript:')) continue;
+      if (href.startsWith('#') || href.startsWith('javascript:') || href.startsWith('mailto:')) continue;
+
+      // 跳过隐藏的链接
+      const style = window.getComputedStyle?.(anchor as HTMLElement);
+      if (style && (style.display === 'none' || style.visibility === 'hidden')) continue;
 
       const url = this.normalizeUrl(href);
       if (!url || !this.isSameDomain(url)) continue;
 
+      // 跳过当前页面的链接
+      if (url === this.baseUrl || url === this.baseUrl + '/') continue;
+
       const title = this.getCleanText(anchor);
-      if (!title || title.length < 2) continue;
+      if (!title || title.length < 2 || title.length > 200) continue;
+
+      // 跳过只有图标/图片的链接
+      const hasOnlyImage = anchor.querySelectorAll('img, svg').length > 0 &&
+                          !anchor.textContent?.trim();
+      if (hasOnlyImage) continue;
 
       // 计算深度（基于 DOM 结构）
       const depth = this.calculateDepth(anchor, element);
@@ -260,13 +272,35 @@ export class TOCParser {
   private calculateDepth(anchor: Element, container: Element): number {
     let depth = 0;
     let current: Element | null = anchor;
+    let foundList = false;
 
     while (current && current !== container) {
       const tagName = current.tagName.toLowerCase();
-      // 列表项增加深度
-      if (tagName === 'li' || tagName === 'ul' || tagName === 'ol') {
+
+      // 嵌套的 ul/ol 增加深度
+      if ((tagName === 'ul' || tagName === 'ol') && foundList) {
         depth++;
       }
+
+      if (tagName === 'ul' || tagName === 'ol') {
+        foundList = true;
+      }
+
+      // 检查是否有明确的层级 class
+      const classList = current.className?.toLowerCase() || '';
+      if (classList.includes('level-') || classList.includes('depth-') || classList.includes('indent')) {
+        const match = classList.match(/(?:level|depth)-(\d+)/);
+        if (match) {
+          return parseInt(match[1], 10);
+        }
+      }
+
+      // 检查 aria-level 属性
+      const ariaLevel = current.getAttribute('aria-level');
+      if (ariaLevel) {
+        return parseInt(ariaLevel, 10) - 1;
+      }
+
       current = current.parentElement;
     }
 
@@ -280,17 +314,58 @@ export class TOCParser {
     const title = link.title.toLowerCase();
     const url = link.url.toLowerCase();
 
+    // 标题太短或太长的跳过
+    if (link.title.length < 2 || link.title.length > 200) {
+      return false;
+    }
+
     // 排除常见的非章节链接
     const excludePatterns = [
-      /^(home|首页|返回|back|top|login|logout|sign|register)/i,
-      /\.(png|jpg|gif|svg|pdf|zip|exe)$/i,
-      /(twitter|facebook|github|linkedin|share|comment)/i,
+      /^(home|首页|返回|back|top|login|logout|sign|register|edit|delete|copy|share|print)/i,
+      /^(github|twitter|facebook|linkedin|youtube|instagram|discord)/i,
+      /^(previous|next|上一页|下一页|prev|next page)/i,
+      /^(搜索|search|find)/i,
+      /^(contact|联系|about|关于|help|帮助|faq|support)/i,
+      /^(\d+|#\d+|page \d+)$/i, // 纯数字或页码
+      /\.(png|jpg|jpeg|gif|svg|pdf|zip|exe|dmg|pkg|tar|gz)$/i,
+      /(twitter\.com|facebook\.com|github\.com|linkedin\.com|youtube\.com)/i,
+      /(\?|&)(share|comment|reply|edit|delete)/i,
+      /^(view|download|更多|more|see more|read more)/i,
+      /^\[.*\]$/i, // [something] 格式
+      /^<|>$/i, // 导航箭头
     ];
 
     for (const pattern of excludePatterns) {
       if (pattern.test(title) || pattern.test(url)) {
         return false;
       }
+    }
+
+    // URL 必须看起来像文档页面
+    const docPatterns = [
+      /\.(html?|md|mdx|rst|txt)$/i,
+      /\/docs?\//i,
+      /\/guide\//i,
+      /\/tutorial/i,
+      /\/chapter/i,
+      /\/section/i,
+      /\/learn/i,
+      /\/getting-started/i,
+      /\/api\//i,
+      /\/reference/i,
+    ];
+
+    // 如果 URL 匹配文档模式，更可能是章节
+    const looksLikeDoc = docPatterns.some(p => p.test(url));
+
+    // URL 不应该包含太多查询参数（通常是功能链接）
+    try {
+      const parsed = new URL(url);
+      if (parsed.search.length > 50) {
+        return false;
+      }
+    } catch {
+      // ignore
     }
 
     return true;
