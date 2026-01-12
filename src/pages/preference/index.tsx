@@ -4,6 +4,7 @@ import Account from './account';
 import ImageHosting from './imageHosting';
 import Extensions from './extensions';
 import AISettings from './ai';
+import BatchClipPage from '@/pages/batch';
 import { CenterContainer } from 'components/container';
 import { router, connect } from 'dva';
 
@@ -14,6 +15,7 @@ import {
   UserOutlined,
   SettingOutlined,
   RobotOutlined,
+  CopyOutlined,
 } from '@ant-design/icons';
 
 import { Tabs, Badge, message } from 'antd';
@@ -65,6 +67,12 @@ const tabs = [
     icon: <RobotOutlined />,
     title: <FormattedMessage id="preference.tab.ai" defaultMessage="AI" />,
     component: AISettings,
+  },
+  {
+    path: 'batch',
+    icon: <CopyOutlined />,
+    title: <FormattedMessage id="preference.tab.batch" defaultMessage="Batch" />,
+    component: BatchClipPage,
   },
   {
     path: 'base',
