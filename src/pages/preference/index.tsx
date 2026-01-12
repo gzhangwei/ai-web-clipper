@@ -3,6 +3,7 @@ import styles from './index.less';
 import Account from './account';
 import ImageHosting from './imageHosting';
 import Extensions from './extensions';
+import AISettings from './ai';
 import { CenterContainer } from 'components/container';
 import { router, connect } from 'dva';
 
@@ -12,6 +13,7 @@ import {
   ToolOutlined,
   UserOutlined,
   SettingOutlined,
+  RobotOutlined,
 } from '@ant-design/icons';
 
 import { Tabs, Badge, message } from 'antd';
@@ -57,6 +59,12 @@ const tabs = [
 
     title: <FormattedMessage id="preference.tab.imageHost" defaultMessage="ImageHost" />,
     component: ImageHosting,
+  },
+  {
+    path: 'ai',
+    icon: <RobotOutlined />,
+    title: <FormattedMessage id="preference.tab.ai" defaultMessage="AI" />,
+    component: AISettings,
   },
   {
     path: 'base',
