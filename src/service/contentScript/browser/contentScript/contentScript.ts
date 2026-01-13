@@ -15,6 +15,44 @@ import { getResourcePath } from '@/common/getResource';
 
 const turndownService = new TurndownService({ codeBlockStyle: 'fenced' });
 turndownService.use(plugins);
+
+// 自定义规则：处理空链接 [](url) -> 移除或转为纯URL
+turndownService.addRule('emptyLinks', {
+  filter: (node: HTMLElement) => {
+    return (
+      node.nodeName === 'A' &&
+      node.getAttribute('href') &&
+      !node.textContent?.trim()
+    );
+  },
+  replacement: (_content: string, node: HTMLElement) => {
+    // 空链接直接移除，不保留
+    return '';
+  },
+});
+
+// 自定义规则：处理只有图片的链接，避免生成空括号
+turndownService.addRule('imageOnlyLinks', {
+  filter: (node: HTMLElement) => {
+    if (node.nodeName !== 'A') return false;
+    const children = node.childNodes;
+    // 只有一个子节点且是图片
+    return children.length === 1 && children[0].nodeName === 'IMG';
+  },
+  replacement: (_content: string, node: HTMLElement) => {
+    const img = node.querySelector('img');
+    if (!img) return '';
+    const alt = img.getAttribute('alt') || '';
+    const src = img.getAttribute('src') || '';
+    const href = node.getAttribute('href') || '';
+    // 返回带链接的图片
+    if (src) {
+      return `[![${alt}](${src})](${href})`;
+    }
+    return '';
+  },
+});
+
 class ContentScriptService implements IContentScriptService {
   constructor(@Inject(IExtensionContainer) private extensionContainer: IExtensionContainer) {}
 

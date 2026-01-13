@@ -9,6 +9,38 @@ interface AIOrganizeResult {
   url: string;
 }
 
+/**
+ * 清理 Markdown 内容，修复常见格式问题
+ */
+function cleanupMarkdown(content: string): string {
+  let cleaned = content;
+
+  // 1. 移除空链接 [](url) 或 [ ](url)
+  cleaned = cleaned.replace(/\[[\s]*\]\([^)]+\)/g, '');
+
+  // 2. 修复转义的数字序号：1\. -> 1.
+  cleaned = cleaned.replace(/(\d+)\\\.(\s)/g, '$1.$2');
+
+  // 3. 修复多余的转义字符
+  cleaned = cleaned.replace(/\\\*/g, '*');
+  cleaned = cleaned.replace(/\\_/g, '_');
+
+  // 4. 清理连续多个空行为最多两个
+  cleaned = cleaned.replace(/\n{4,}/g, '\n\n\n');
+
+  // 5. 清理行尾空白
+  cleaned = cleaned.replace(/[ \t]+$/gm, '');
+
+  // 6. 修复表格：移除表格中多余的空行
+  cleaned = cleaned.replace(/(\|[^\n]+\|)\n\n(\|)/g, '$1\n$2');
+
+  // 7. 移除空的粗体/斜体标记
+  cleaned = cleaned.replace(/\*\*\s*\*\*/g, '');
+  cleaned = cleaned.replace(/\*\s*\*/g, '');
+
+  return cleaned.trim();
+}
+
 export default new TextExtension<AIOrganizeResult>(
   {
     name: 'AI Organize',
@@ -155,6 +187,9 @@ function buildEnhancedContent(originalContent: string, aiResult: AIProcessResult
 
   const { summary, keyPoints, tags, category } = aiResult;
 
+  // 先清理原始内容
+  const cleanedContent = cleanupMarkdown(originalContent);
+
   // AI 生成的元信息块 (YAML front matter)
   sections.push('---');
   if (tags && tags.length > 0) {
@@ -184,9 +219,9 @@ function buildEnhancedContent(originalContent: string, aiResult: AIProcessResult
   // 分隔线
   sections.push('---\n');
 
-  // 原始内容
+  // 原始内容（已清理）
   sections.push('## 📄 Original Content\n');
-  sections.push(originalContent);
+  sections.push(cleanedContent);
 
   return sections.join('\n');
 }
