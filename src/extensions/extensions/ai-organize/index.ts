@@ -31,8 +31,14 @@ function cleanupMarkdown(content: string): string {
   // 5. 清理行尾空白
   cleaned = cleaned.replace(/[ \t]+$/gm, '');
 
-  // 6. 修复表格：移除表格中多余的空行
-  cleaned = cleaned.replace(/(\|[^\n]+\|)\n\n(\|)/g, '$1\n$2');
+  // 6. 修复表格：移除表格行之间的所有空行
+  // 需要多次应用，因为一次替换可能不够
+  let prevCleaned = '';
+  while (prevCleaned !== cleaned) {
+    prevCleaned = cleaned;
+    // 匹配表格行后跟一个或多个空行再跟表格行
+    cleaned = cleaned.replace(/(\|[^\n]+\|)\n\s*\n+(\|)/g, '$1\n$2');
+  }
 
   // 7. 移除空的粗体/斜体标记
   cleaned = cleaned.replace(/\*\*\s*\*\*/g, '');
