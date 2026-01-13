@@ -1,0 +1,88 @@
+name: Build Extension
+
+on:
+  push:
+    branches:
+      - master
+      - develop
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - master
+      - develop
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 8.14.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18.x'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Chrome extension
+        run: pnpm webpack --config webpack/webpack.prod.js
+
+      - name: Create ZIP archive
+        run: |
+          cd dist
+          zip -r ../web-clipper-chrome.zip chrome/
+          cd ..
+
+      - name: Upload Chrome extension artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-clipper-chrome-${{ github.sha }}
+          path: web-clipper-chrome.zip
+          retention-days: 30
+
+      - name: Upload dist folder
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-clipper-dist-${{ github.sha }}
+          path: dist/chrome/
+          retention-days: 30
+
+  # 当推送 tag 时自动创建 Release
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: web-clipper-chrome-${{ github.sha }}
+
+      - name: Get version from tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Rename artifact
+        run: mv web-clipper-chrome.zip web-clipper-chrome-${{ steps.get_version.outputs.VERSION }}.zip
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: web-clipper-chrome-${{ steps.get_version.outputs.VERSION }}.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
