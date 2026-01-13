@@ -199,6 +199,7 @@ builder
     if (run) {
       //@ts-ignore
       result = yield call(contentScriptService.runScript, id, 'run');
+      console.log('[Popup] Result from content script run:', result);
     }
     const state: GlobalStore = yield select(state => state);
     const data = state.clipper.clipperData[pathname];
@@ -241,7 +242,9 @@ builder
         };
         //@ts-ignore
         result = yield call(afterRun, context);
+        console.log('[Popup] Result from afterRun:', typeof result, result?.length || result);
       } catch (error) {
+        console.error('[Popup] afterRun error:', error);
         message.error((error as Error).message);
       }
     }

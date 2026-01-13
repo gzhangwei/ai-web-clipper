@@ -14,21 +14,77 @@ import {
   PageCreateResult,
   CreateHierarchyProgress,
   CreateHierarchyOptions,
+  NotionBackendServiceConfig,
+  NotionApiUserResponse,
+  NotionApiSearchResponse,
+  NotionApiPage,
 } from './types';
 import { NotionHierarchyService } from './hierarchy';
 
 const PAGE = 'page';
 const COLLECTION_VIEW_PAGE = 'collection_view_page';
 const origin = 'https://www.notion.so/';
+const NOTION_API_BASE = 'https://api.notion.com/v1';
+const NOTION_API_VERSION = '2022-06-28';
 
 export default class NotionDocumentService implements DocumentService {
   private request: AxiosInstance;
+  private apiRequest?: AxiosInstance;
   private repositories: NotionRepository[];
   private userContent?: NotionUserContent;
   private webRequestService: IWebRequestService;
   private cookieService: ICookieService;
+  private config?: NotionBackendServiceConfig;
+  private useOfficialApi: boolean = false;
+  private cachedUserInfo?: NotionApiUserResponse;
 
-  constructor() {
+  constructor(config?: NotionBackendServiceConfig) {
+    this.config = config;
+    this.repositories = [];
+    this.webRequestService = Container.get(IWebRequestService);
+    this.cookieService = Container.get(ICookieService);
+
+    // 如果提供了 API Key，使用官方 API
+    if (config?.apiKey) {
+      this.useOfficialApi = true;
+      this.apiRequest = axios.create({
+        baseURL: NOTION_API_BASE,
+        timeout: 30000,
+        headers: {
+          'Authorization': `Bearer ${config.apiKey}`,
+          'Notion-Version': NOTION_API_VERSION,
+          'Content-Type': 'application/json',
+        },
+      });
+      this.apiRequest.interceptors.response.use(
+        (r) => r,
+        (error) => {
+          if (error.response && error.response.status === 401) {
+            return Promise.reject(
+              new UnauthorizedError(
+                localeService.format({
+                  id: 'backend.services.notion.invalidApiKey',
+                  defaultMessage: 'Invalid API Key. Please check your Notion Integration Token.',
+                })
+              )
+            );
+          }
+          if (error.response && error.response.status === 403) {
+            return Promise.reject(
+              new UnauthorizedError(
+                localeService.format({
+                  id: 'backend.services.notion.noAccess',
+                  defaultMessage: 'No access. Please share pages with your Notion Integration.',
+                })
+              )
+            );
+          }
+          return Promise.reject(error);
+        }
+      );
+    }
+
+    // Cookie 方式的请求实例（向后兼容）
     const request = axios.create({
       baseURL: origin,
       timeout: 10000,
@@ -40,9 +96,6 @@ export default class NotionDocumentService implements DocumentService {
       withCredentials: true,
     });
     this.request = request;
-    this.repositories = [];
-    this.webRequestService = Container.get(IWebRequestService);
-    this.cookieService = Container.get(ICookieService);
     this.request.interceptors.response.use(
       (r) => r,
       (error) => {
@@ -62,7 +115,21 @@ export default class NotionDocumentService implements DocumentService {
   }
 
   getId = async () => {
-    // 获取用户信息以生成唯一 ID
+    // 使用官方 API
+    if (this.useOfficialApi && this.apiRequest) {
+      try {
+        if (!this.cachedUserInfo) {
+          const response = await this.apiRequest.get<NotionApiUserResponse>('/users/me');
+          this.cachedUserInfo = response.data;
+        }
+        return `notion_api_${this.cachedUserInfo.id}`;
+      } catch (error) {
+        console.error('Failed to get Notion user ID via API:', error);
+        throw error;
+      }
+    }
+
+    // 使用 Cookie 方式（向后兼容）
     try {
       if (!this.userContent) {
         this.userContent = await this.getUserContent();
@@ -72,7 +139,6 @@ export default class NotionDocumentService implements DocumentService {
         return 'notion_unknown';
       }
       const userId = userKeys[0];
-      // 使用 notion_ 前缀 + 用户 ID 作为唯一标识
       return `notion_${userId}`;
     } catch (error) {
       console.error('Failed to get Notion user ID:', error);
@@ -81,6 +147,22 @@ export default class NotionDocumentService implements DocumentService {
   };
 
   getUserInfo = async () => {
+    // 使用官方 API
+    if (this.useOfficialApi && this.apiRequest) {
+      if (!this.cachedUserInfo) {
+        const response = await this.apiRequest.get<NotionApiUserResponse>('/users/me');
+        this.cachedUserInfo = response.data;
+      }
+      const user = this.cachedUserInfo;
+      return {
+        name: user.name || 'Notion Integration',
+        avatar: user.avatar_url || 'https://www.notion.so/images/favicon.ico',
+        homePage: 'https://www.notion.so/',
+        description: user.type === 'bot' ? 'Integration' : (user.person?.email || ''),
+      };
+    }
+
+    // 使用 Cookie 方式（向后兼容）
     if (!this.userContent) {
       this.userContent = await this.getUserContent();
     }
@@ -96,6 +178,12 @@ export default class NotionDocumentService implements DocumentService {
   };
 
   getRepositories = async () => {
+    // 使用官方 API
+    if (this.useOfficialApi && this.apiRequest) {
+      return this.getRepositoriesViaApi();
+    }
+
+    // 使用 Cookie 方式（向后兼容）
     if (!this.userContent) {
       this.userContent = await this.getUserContent();
     }
@@ -114,6 +202,99 @@ export default class NotionDocumentService implements DocumentService {
     this.repositories = result.flat() as NotionRepository[];
     return this.repositories;
   };
+
+  /**
+   * 通过官方 API 获取可用页面列表
+   */
+  private getRepositoriesViaApi = async (): Promise<NotionRepository[]> => {
+    if (!this.apiRequest) {
+      throw new Error('API request not initialized');
+    }
+
+    const repositories: NotionRepository[] = [];
+    let hasMore = true;
+    let startCursor: string | undefined;
+
+    while (hasMore) {
+      const response = await this.apiRequest.post<NotionApiSearchResponse>('/search', {
+        filter: {
+          value: 'page',
+          property: 'object',
+        },
+        sort: {
+          direction: 'descending',
+          timestamp: 'last_edited_time',
+        },
+        start_cursor: startCursor,
+        page_size: 100,
+      });
+
+      const { results, has_more, next_cursor } = response.data;
+
+      for (const page of results) {
+        if (page.object === 'page') {
+          const title = this.extractPageTitle(page);
+          if (title) {
+            repositories.push({
+              id: page.id,
+              name: title,
+              groupId: this.getWorkspaceId(page),
+              groupName: 'Notion',
+              pageType: PAGE,
+            });
+          }
+        }
+      }
+
+      hasMore = has_more;
+      startCursor = next_cursor || undefined;
+
+      // 限制最多获取 500 个页面
+      if (repositories.length >= 500) {
+        break;
+      }
+    }
+
+    this.repositories = repositories;
+    return repositories;
+  };
+
+  /**
+   * 从页面对象中提取标题
+   */
+  private extractPageTitle(page: NotionApiPage): string | null {
+    // 尝试从 title 属性获取
+    if (page.properties.title?.title?.length) {
+      return page.properties.title.title.map(t => t.plain_text).join('');
+    }
+    // 尝试从 Name 属性获取（数据库页面常用）
+    if (page.properties.Name?.title?.length) {
+      return page.properties.Name.title.map(t => t.plain_text).join('');
+    }
+    // 遍历其他属性查找 title 类型
+    for (const [, value] of Object.entries(page.properties)) {
+      if (value?.type === 'title' && value.title?.length) {
+        return value.title.map((t: { plain_text: string }) => t.plain_text).join('');
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 获取工作区 ID
+   */
+  private getWorkspaceId(page: NotionApiPage): string {
+    if (page.parent.type === 'workspace') {
+      return 'workspace';
+    }
+    if (page.parent.page_id) {
+      return page.parent.page_id;
+    }
+    if (page.parent.database_id) {
+      return page.parent.database_id;
+    }
+    return 'unknown';
+  }
 
   getSpaces = async (userId: string) => {
     const response = await this.requestWithCookie.post<{
@@ -195,6 +376,12 @@ export default class NotionDocumentService implements DocumentService {
     title,
     content,
   }: CreateDocumentRequest): Promise<CompleteStatus> => {
+    // 使用官方 API 创建页面
+    if (this.useOfficialApi && this.apiRequest) {
+      return this.createDocumentViaApi(repositoryId, title, content);
+    }
+
+    // 使用 Cookie 方式（向后兼容）
     let fileName = `${title}.md`;
 
     const repository = this.repositories.find((o) => o.id === repositoryId);
@@ -233,6 +420,132 @@ export default class NotionDocumentService implements DocumentService {
     return {
       href: `https://www.notion.so/${repository.groupId}/${documentId.replace(/-/g, '')}`,
     };
+  };
+
+  /**
+   * 通过官方 API 创建文档
+   */
+  private createDocumentViaApi = async (
+    repositoryId: string,
+    title: string,
+    content: string
+  ): Promise<CompleteStatus> => {
+    if (!this.apiRequest) {
+      throw new Error('API request not initialized');
+    }
+
+    // 将 Markdown 内容转换为 Notion blocks
+    const children = this.markdownToNotionBlocks(content);
+
+    // 创建页面
+    const response = await this.apiRequest.post<{ id: string; url: string }>('/pages', {
+      parent: {
+        page_id: repositoryId,
+      },
+      properties: {
+        title: {
+          title: [
+            {
+              text: {
+                content: title,
+              },
+            },
+          ],
+        },
+      },
+      children,
+    });
+
+    return {
+      href: response.data.url,
+    };
+  };
+
+  /**
+   * 将 Markdown 转换为 Notion blocks（简化版本）
+   */
+  private markdownToNotionBlocks(markdown: string): any[] {
+    const lines = markdown.split('\n');
+    const blocks: any[] = [];
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+
+      // 标题
+      if (line.startsWith('### ')) {
+        blocks.push({
+          object: 'block',
+          type: 'heading_3',
+          heading_3: {
+            rich_text: [{ type: 'text', text: { content: line.slice(4) } }],
+          },
+        });
+      } else if (line.startsWith('## ')) {
+        blocks.push({
+          object: 'block',
+          type: 'heading_2',
+          heading_2: {
+            rich_text: [{ type: 'text', text: { content: line.slice(3) } }],
+          },
+        });
+      } else if (line.startsWith('# ')) {
+        blocks.push({
+          object: 'block',
+          type: 'heading_1',
+          heading_1: {
+            rich_text: [{ type: 'text', text: { content: line.slice(2) } }],
+          },
+        });
+      }
+      // 无序列表
+      else if (line.startsWith('- ') || line.startsWith('* ')) {
+        blocks.push({
+          object: 'block',
+          type: 'bulleted_list_item',
+          bulleted_list_item: {
+            rich_text: [{ type: 'text', text: { content: line.slice(2) } }],
+          },
+        });
+      }
+      // 有序列表
+      else if (/^\d+\.\s/.test(line)) {
+        blocks.push({
+          object: 'block',
+          type: 'numbered_list_item',
+          numbered_list_item: {
+            rich_text: [{ type: 'text', text: { content: line.replace(/^\d+\.\s/, '') } }],
+          },
+        });
+      }
+      // 代码块开始
+      else if (line.startsWith('```')) {
+        // 简化处理，跳过代码块标记
+        continue;
+      }
+      // 引用
+      else if (line.startsWith('> ')) {
+        blocks.push({
+          object: 'block',
+          type: 'quote',
+          quote: {
+            rich_text: [{ type: 'text', text: { content: line.slice(2) } }],
+          },
+        });
+      }
+      // 普通段落
+      else {
+        blocks.push({
+          object: 'block',
+          type: 'paragraph',
+          paragraph: {
+            rich_text: [{ type: 'text', text: { content: line } }],
+          },
+        });
+      }
+    }
+
+    // Notion API 限制每次最多 100 个 blocks
+    return blocks.slice(0, 100);
   };
 
   getSpaceId = async () => {

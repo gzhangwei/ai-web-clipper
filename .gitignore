@@ -14,3 +14,7 @@ webclipper.zip
 
 .now
 release
+ai/1.txt
+CLAUDE.md
+ai/NOTION_OAUTH_SETUP.md
+script/notion-oauth-worker.js

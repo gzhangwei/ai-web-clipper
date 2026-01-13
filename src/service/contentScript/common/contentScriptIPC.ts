@@ -40,7 +40,7 @@ export class ContentScriptChannelClient implements IContentScriptService {
     return this.channel.call('remove');
   };
 
-  runScript = async (id: string, lifeCycle: 'run' | 'destroy'): Promise<void> => {
+  runScript = async (id: string, lifeCycle: 'run' | 'destroy'): Promise<any> => {
     return this.channel.call('runScript', [id, lifeCycle]);
   };
 

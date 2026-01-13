@@ -9,7 +9,7 @@ export interface IContentScriptService {
   remove(): Promise<void>;
   checkStatus(): Promise<boolean>;
   toggle(config?: IToggleConfig): Promise<void>;
-  runScript(id: string, lifeCycle: 'run' | 'destroy'): Promise<void>;
+  runScript(id: string, lifeCycle: 'run' | 'destroy'): Promise<any>;
   getSelectionMarkdown(): Promise<string>;
   getPageUrl(): Promise<string>;
 }

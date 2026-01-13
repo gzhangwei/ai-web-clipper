@@ -84,9 +84,20 @@ class ContentScriptService implements IContentScriptService {
 
   async runScript(id: string, lifeCycle: 'run' | 'destroy') {
     const extensions = this.extensionContainer.extensions;
+    console.log(`[ContentScript] runScript called: id=${id}, lifeCycle=${lifeCycle}, extensions count=${extensions.length}`);
+
     const extension = extensions.find((o) => o.id === id);
+    console.log(`[ContentScript] Extension found:`, extension ? `yes (type=${extension.type})` : 'no');
+
+    if (extension) {
+      console.log(`[ContentScript] Extension lifecycle methods:`, Object.keys(extension.extensionLifeCycle || {}));
+    }
+
     const lifeCycleFunc = extension?.extensionLifeCycle[lifeCycle];
+    console.log(`[ContentScript] lifeCycleFunc exists:`, !!lifeCycleFunc);
+
     if (!lifeCycleFunc) {
+      console.warn(`[ContentScript] No ${lifeCycle} function found for extension ${id}`);
       return;
     }
     await localStorageService.init();
@@ -108,7 +119,14 @@ class ContentScriptService implements IContentScriptService {
       },
     };
     $(`.${styles.toolFrame}`).blur();
-    return lifeCycleFunc(context);
+    try {
+      const result = await lifeCycleFunc(context);
+      console.log(`[ContentScript] ${lifeCycle} result:`, result);
+      return result;
+    } catch (e) {
+      console.error(`[ContentScript] ${lifeCycle} error:`, e);
+      throw e;
+    }
   }
 }
 

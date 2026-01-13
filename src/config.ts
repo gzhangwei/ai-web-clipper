@@ -6,6 +6,9 @@ interface WebClipperConfig {
   yuqueScope: string;
   oneNoteCallBack: string;
   oneNoteClientId: string;
+  // Notion OAuth 配置
+  notionClientId: string;
+  notionCallback: string;
 }
 
 export interface RemoteConfig {
@@ -21,6 +24,9 @@ let config: WebClipperConfig = {
   yuqueScope: 'doc,group,repo,attach_upload',
   oneNoteClientId: '563571ad-cfcd-442a-aa34-046bad24b1b6',
   oneNoteCallBack: 'https://webclipper-oauth.yfd.im/onenote_oauth',
+  // Notion OAuth 配置
+  notionClientId: '2e6d872b-594c-8077-b469-0037c71d5685',
+  notionCallback: 'https://notion-oauth.xxynly.workers.dev/notion_oauth',
 };
 
 if (process.env.NODE_ENV === 'development') {
