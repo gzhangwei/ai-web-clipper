@@ -16,6 +16,51 @@ import { getResourcePath } from '@/common/getResource';
 const turndownService = new TurndownService({ codeBlockStyle: 'fenced' });
 turndownService.use(plugins);
 
+// 自定义规则：处理没有 <th> 标头的表格（GFM 默认只处理有 <th> 的表格）
+turndownService.addRule('tableWithoutHeaders', {
+  filter: (node: HTMLElement) => {
+    if (node.nodeName !== 'TABLE') return false;
+    const rows = (node as HTMLTableElement).rows;
+    if (!rows || rows.length === 0) return false;
+    // 检查第一行是否全是 TH（如果是，GFM 插件会处理）
+    const firstRow = rows[0];
+    const allTh = Array.from(firstRow.cells).every(cell => cell.nodeName === 'TH');
+    // 只处理没有 TH 标头的表格
+    return !allTh;
+  },
+  replacement: (_content: string, node: HTMLElement) => {
+    const table = node as HTMLTableElement;
+    const rows = Array.from(table.rows);
+    if (rows.length === 0) return '';
+
+    const markdownRows: string[] = [];
+
+    rows.forEach((row, rowIndex) => {
+      const cells = Array.from(row.cells);
+      const cellContents = cells.map(cell => {
+        // 清理单元格内容：移除多余空白和换行
+        let text = cell.textContent || '';
+        text = text.replace(/\s+/g, ' ').trim();
+        // 转义管道符号
+        text = text.replace(/\|/g, '\\|');
+        return text;
+      });
+
+      // 构建表格行
+      const rowStr = '| ' + cellContents.join(' | ') + ' |';
+      markdownRows.push(rowStr);
+
+      // 在第一行后添加分隔行
+      if (rowIndex === 0) {
+        const separator = '| ' + cells.map(() => '---').join(' | ') + ' |';
+        markdownRows.push(separator);
+      }
+    });
+
+    return '\n\n' + markdownRows.join('\n') + '\n\n';
+  },
+});
+
 // 自定义规则：处理空链接 [](url) -> 移除或转为纯URL
 turndownService.addRule('emptyLinks', {
   filter: (node: HTMLElement) => {

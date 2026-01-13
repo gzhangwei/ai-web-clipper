@@ -38,7 +38,117 @@ function cleanupMarkdown(content: string): string {
   cleaned = cleaned.replace(/\*\*\s*\*\*/g, '');
   cleaned = cleaned.replace(/\*\s*\*/g, '');
 
+  // 8. 修复破碎的表格格式（每个单元格单独一行的情况）
+  // 匹配模式：多行只有 "|" 和内容，需要合并成正确的表格行
+  cleaned = repairBrokenTables(cleaned);
+
   return cleaned.trim();
+}
+
+/**
+ * 修复破碎的表格格式
+ * 将每个单元格单独一行的格式修复为标准 Markdown 表格
+ */
+function repairBrokenTables(content: string): string {
+  // 匹配破碎的表格模式：连续的 "| 内容 |" 或 "| 内容" 行
+  // 例如：
+  // |
+  // 项目
+  // |
+  // 标准
+  // |
+
+  const lines = content.split('\n');
+  const result: string[] = [];
+  let tableBuffer: string[] = [];
+  let inBrokenTable = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+
+    // 检测是否是破碎表格的一部分
+    // 破碎表格特征：独立的 "|" 行，或者 "| 内容 |" 但内容很短且后面跟着更多类似行
+    const isJustPipe = line === '|';
+    const isPipeWithContent = /^\|[^|]+\|$/.test(line) || /^\|[^|]+$/.test(line);
+    const looksLikeBrokenTable = isJustPipe || (isPipeWithContent && line.length < 50);
+
+    if (looksLikeBrokenTable) {
+      if (!inBrokenTable) {
+        inBrokenTable = true;
+      }
+      // 收集非空内容
+      if (!isJustPipe) {
+        const cellContent = line.replace(/^\||\|$/g, '').trim();
+        if (cellContent) {
+          tableBuffer.push(cellContent);
+        }
+      }
+    } else {
+      // 如果之前在处理破碎表格，现在要结束了
+      if (inBrokenTable && tableBuffer.length > 0) {
+        // 尝试将收集的内容重构为表格
+        const reconstructedTable = reconstructTable(tableBuffer);
+        result.push(reconstructedTable);
+        tableBuffer = [];
+        inBrokenTable = false;
+      }
+      result.push(lines[i]); // 保留原始格式（包括空白）
+    }
+  }
+
+  // 处理文件末尾的破碎表格
+  if (inBrokenTable && tableBuffer.length > 0) {
+    const reconstructedTable = reconstructTable(tableBuffer);
+    result.push(reconstructedTable);
+  }
+
+  return result.join('\n');
+}
+
+/**
+ * 将收集到的表格单元格内容重构为 Markdown 表格
+ */
+function reconstructTable(cells: string[]): string {
+  if (cells.length === 0) return '';
+
+  // 尝试推断列数
+  // 通常表格会有标题行，我们假设前几个是标题
+  // 简单策略：如果单元格数量是某个数的倍数，使用那个作为列数
+  let numCols = 2; // 默认 2 列
+
+  // 尝试找到合适的列数（2-6 列）
+  for (let cols = 6; cols >= 2; cols--) {
+    if (cells.length % cols === 0 && cells.length >= cols * 2) {
+      numCols = cols;
+      break;
+    }
+  }
+
+  // 构建表格
+  const rows: string[][] = [];
+  for (let i = 0; i < cells.length; i += numCols) {
+    rows.push(cells.slice(i, i + numCols));
+  }
+
+  if (rows.length === 0) return cells.join(' ');
+
+  // 生成 Markdown 表格
+  const tableLines: string[] = [];
+
+  rows.forEach((row, index) => {
+    // 补齐不足的列
+    while (row.length < numCols) {
+      row.push('');
+    }
+    tableLines.push('| ' + row.join(' | ') + ' |');
+
+    // 添加分隔行
+    if (index === 0) {
+      tableLines.push('| ' + row.map(() => '---').join(' | ') + ' |');
+    }
+  });
+
+  return '\n' + tableLines.join('\n') + '\n';
 }
 
 export default new TextExtension<AIOrganizeResult>(
