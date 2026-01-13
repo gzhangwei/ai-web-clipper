@@ -467,9 +467,25 @@ export default class NotionDocumentService implements DocumentService {
   private markdownToNotionBlocks(markdown: string): any[] {
     const lines = markdown.split('\n');
     const blocks: any[] = [];
+    let i = 0;
 
-    for (const line of lines) {
-      if (!line.trim()) continue;
+    while (i < lines.length) {
+      const line = lines[i];
+
+      if (!line.trim()) {
+        i++;
+        continue;
+      }
+
+      // 检测表格（以 | 开头的行）
+      if (line.trim().startsWith('|')) {
+        const tableResult = this.parseMarkdownTable(lines, i);
+        if (tableResult.block) {
+          blocks.push(tableResult.block);
+          i = tableResult.endIndex + 1;
+          continue;
+        }
+      }
 
       // 标题
       if (line.startsWith('### ')) {
@@ -497,6 +513,14 @@ export default class NotionDocumentService implements DocumentService {
           },
         });
       }
+      // 分隔线
+      else if (line.trim() === '---' || line.trim() === '***' || line.trim() === '___') {
+        blocks.push({
+          object: 'block',
+          type: 'divider',
+          divider: {},
+        });
+      }
       // 无序列表
       else if (line.startsWith('- ') || line.startsWith('* ')) {
         blocks.push({
@@ -520,6 +544,7 @@ export default class NotionDocumentService implements DocumentService {
       // 代码块开始
       else if (line.startsWith('```')) {
         // 简化处理，跳过代码块标记
+        i++;
         continue;
       }
       // 引用
@@ -542,10 +567,95 @@ export default class NotionDocumentService implements DocumentService {
           },
         });
       }
+
+      i++;
     }
 
     // Notion API 限制每次最多 100 个 blocks
     return blocks.slice(0, 100);
+  };
+
+  /**
+   * 解析 Markdown 表格并转换为 Notion table block
+   */
+  private parseMarkdownTable(lines: string[], startIndex: number): { block: any | null; endIndex: number } {
+    const tableLines: string[] = [];
+    let i = startIndex;
+
+    // 收集所有表格行
+    while (i < lines.length && lines[i].trim().startsWith('|')) {
+      tableLines.push(lines[i]);
+      i++;
+    }
+
+    if (tableLines.length < 2) {
+      return { block: null, endIndex: startIndex };
+    }
+
+    // 解析表格行
+    const rows: string[][] = [];
+    let hasHeader = false;
+
+    for (let j = 0; j < tableLines.length; j++) {
+      const line = tableLines[j].trim();
+
+      // 跳过分隔行 (|---|---|)
+      if (/^\|[\s\-:]+\|$/.test(line) || /^\|(\s*[-:]+\s*\|)+$/.test(line)) {
+        hasHeader = true;
+        continue;
+      }
+
+      // 解析单元格
+      const cells = line
+        .split('|')
+        .slice(1, -1) // 移除首尾空元素
+        .map(cell => cell.trim());
+
+      if (cells.length > 0) {
+        rows.push(cells);
+      }
+    }
+
+    if (rows.length === 0) {
+      return { block: null, endIndex: startIndex };
+    }
+
+    // 确定列数
+    const columnCount = Math.max(...rows.map(row => row.length));
+
+    // 创建 Notion table block
+    const tableRows = rows.map((row, rowIndex) => {
+      // 补齐列数
+      while (row.length < columnCount) {
+        row.push('');
+      }
+
+      return {
+        object: 'block',
+        type: 'table_row',
+        table_row: {
+          cells: row.map(cell => [
+            {
+              type: 'text',
+              text: { content: cell },
+            },
+          ]),
+        },
+      };
+    });
+
+    const tableBlock = {
+      object: 'block',
+      type: 'table',
+      table: {
+        table_width: columnCount,
+        has_column_header: hasHeader,
+        has_row_header: false,
+        children: tableRows,
+      },
+    };
+
+    return { block: tableBlock, endIndex: i - 1 };
   };
 
   getSpaceId = async () => {
