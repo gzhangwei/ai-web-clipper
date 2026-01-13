@@ -37,6 +37,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Create dist directory
+        run: mkdir -p dist
+
       - name: Build Chrome extension
         run: pnpm webpack --config webpack/webpack.prod.js
 
